@@ -19,8 +19,7 @@ import io.helidon.webserver.WebServer;
 import io.helidon.webserver.grpc.GrpcRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
-import io.helidon.examples.webserver.grpc.Strings.StringMessage;
-
+import pub.ess.eding.mdm.h2.Strings.StringMessage;
 import io.grpc.Channel;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.Test;
@@ -35,148 +34,148 @@ import static org.hamcrest.MatcherAssert.assertThat;
  */
 @ServerTest
 class StringServiceTest {
-    private static final long TIMEOUT_SECONDS = 10;
+  private static final long TIMEOUT_SECONDS = 10;
 
-    private final WebClient webClient;
+  private final WebClient webClient;
 
-    private StringServiceTest(WebServer server) {
-        Tls clientTls = Tls.builder()
-                .trust(trust -> trust
-                        .keystore(store -> store
-                                .passphrase("password")
-                                .trustStore(true)
-                                .keystore(Resource.create("client.p12"))))
-                .build();
-        this.webClient = WebClient.builder()
-                .tls(clientTls)
-                .baseUri("https://localhost:" + server.port())
-                .build();
+  private StringServiceTest(WebServer server) {
+    Tls clientTls = Tls.builder()
+        .trust(trust -> trust
+            .keystore(store -> store
+                .passphrase("password")
+                .trustStore(true)
+                .keystore(Resource.create("client.p12"))))
+        .build();
+    this.webClient = WebClient.builder()
+        .tls(clientTls)
+        .baseUri("https://localhost:" + server.port())
+        .build();
+  }
+
+  @SetUpRoute
+  static void routing(Router.RouterBuilder<?> router) {
+    router.addRouting(GrpcRouting.builder().service(new StringService()));
+  }
+
+  @Test
+  void testUnaryUpper() {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
+    StringMessage res = service.upper(newStringMessage("hello"));
+    assertThat(res.getText(), is("HELLO"));
+  }
+
+  @Test
+  void testUnaryLower() {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
+    StringMessage res = service.lower(newStringMessage("HELLO"));
+    assertThat(res.getText(), is("hello"));
+  }
+
+  @Test
+  void testServerStreamingSplit() {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
+    Iterator<StringMessage> res = service.split(newStringMessage("hello world"));
+    assertThat(res.next().getText(), is("hello"));
+    assertThat(res.next().getText(), is("world"));
+    assertThat(res.hasNext(), is(false));
+  }
+
+  @Test
+  void testClientStreamingJoin() throws ExecutionException, InterruptedException, TimeoutException {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    StringServiceGrpc.StringServiceStub service = StringServiceGrpc.newStub(grpcClient.channel());
+    CompletableFuture<StringMessage> future = new CompletableFuture<>();
+    StreamObserver<StringMessage> req = service.join(singleStreamObserver(future));
+    req.onNext(newStringMessage("hello"));
+    req.onNext(newStringMessage("world"));
+    req.onCompleted();
+    StringMessage res = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    assertThat(res.getText(), is("hello world"));
+  }
+
+  @Test
+  void testBidirectionalEcho() throws ExecutionException, InterruptedException, TimeoutException {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    StringServiceGrpc.StringServiceStub service = StringServiceGrpc.newStub(grpcClient.channel());
+    CompletableFuture<Iterator<StringMessage>> future = new CompletableFuture<>();
+    StreamObserver<StringMessage> req = service.echo(multiStreamObserver(future));
+    req.onNext(newStringMessage("hello"));
+    req.onNext(newStringMessage("world"));
+    req.onCompleted();
+    Iterator<StringMessage> res = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    assertThat(res.next().getText(), is("hello"));
+    assertThat(res.next().getText(), is("world"));
+    assertThat(res.hasNext(), is(false));
+  }
+
+  @Test
+  void testUnaryUpperInterceptor() {
+    GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
+    Channel channel = grpcClient.channel(new StringServiceInterceptor());
+    StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(channel);
+    StringMessage res = service.upper(newStringMessage("hello"));
+    assertThat(res.getText(), is("[[HELLO]]"));
+  }
+
+  /**
+   * Tests server health using HTTP, not gRPC.
+   */
+  @Test
+  void testHealthHttp() {
+    try (HttpClientResponse res = webClient.get("/observe/health").request()) {
+      assertThat(res.status(), is(Status.OK_200));
+      String value = res.as(String.class);
+      assertThat(value, containsString("UP"));
+      assertThat(value, not(containsString("DOWN")));
     }
+  }
 
-    @SetUpRoute
-    static void routing(Router.RouterBuilder<?> router) {
-        router.addRouting(GrpcRouting.builder().service(new StringService()));
-    }
+  static StringMessage newStringMessage(String data) {
+    return StringMessage.newBuilder().setText(data).build();
+  }
 
-    @Test
-    void testUnaryUpper() {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
-        StringMessage res = service.upper(newStringMessage("hello"));
-        assertThat(res.getText(), is("HELLO"));
-    }
+  static <ReqT> StreamObserver<ReqT> singleStreamObserver(CompletableFuture<ReqT> future) {
+    return new StreamObserver<>() {
+      private ReqT value;
 
-    @Test
-    void testUnaryLower() {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
-        StringMessage res = service.lower(newStringMessage("HELLO"));
-        assertThat(res.getText(), is("hello"));
-    }
+      @Override
+      public void onNext(ReqT value) {
+        this.value = value;
+      }
 
-    @Test
-    void testServerStreamingSplit() {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(grpcClient.channel());
-        Iterator<StringMessage> res = service.split(newStringMessage("hello world"));
-        assertThat(res.next().getText(), is("hello"));
-        assertThat(res.next().getText(), is("world"));
-        assertThat(res.hasNext(), is(false));
-    }
+      @Override
+      public void onError(Throwable t) {
+        future.completeExceptionally(t);
+      }
 
-    @Test
-    void testClientStreamingJoin() throws ExecutionException, InterruptedException, TimeoutException {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        StringServiceGrpc.StringServiceStub service = StringServiceGrpc.newStub(grpcClient.channel());
-        CompletableFuture<StringMessage> future = new CompletableFuture<>();
-        StreamObserver<StringMessage> req = service.join(singleStreamObserver(future));
-        req.onNext(newStringMessage("hello"));
-        req.onNext(newStringMessage("world"));
-        req.onCompleted();
-        StringMessage res = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        assertThat(res.getText(), is("hello world"));
-    }
+      @Override
+      public void onCompleted() {
+        future.complete(value);
+      }
+    };
+  }
 
-    @Test
-    void testBidirectionalEcho() throws ExecutionException, InterruptedException, TimeoutException {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        StringServiceGrpc.StringServiceStub service = StringServiceGrpc.newStub(grpcClient.channel());
-        CompletableFuture<Iterator<StringMessage>> future = new CompletableFuture<>();
-        StreamObserver<StringMessage> req = service.echo(multiStreamObserver(future));
-        req.onNext(newStringMessage("hello"));
-        req.onNext(newStringMessage("world"));
-        req.onCompleted();
-        Iterator<StringMessage> res = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        assertThat(res.next().getText(), is("hello"));
-        assertThat(res.next().getText(), is("world"));
-        assertThat(res.hasNext(), is(false));
-    }
+  static <ResT> StreamObserver<ResT> multiStreamObserver(CompletableFuture<Iterator<ResT>> future) {
+    return new StreamObserver<>() {
+      private final List<ResT> value = new ArrayList<>();
 
-    @Test
-    void testUnaryUpperInterceptor() {
-        GrpcClient grpcClient = webClient.client(GrpcClient.PROTOCOL);
-        Channel channel = grpcClient.channel(new StringServiceInterceptor());
-        StringServiceGrpc.StringServiceBlockingStub service = StringServiceGrpc.newBlockingStub(channel);
-        StringMessage res = service.upper(newStringMessage("hello"));
-        assertThat(res.getText(), is("[[HELLO]]"));
-    }
+      @Override
+      public void onNext(ResT value) {
+        this.value.add(value);
+      }
 
-    /**
-     * Tests server health using HTTP, not gRPC.
-     */
-    @Test
-    void testHealthHttp() {
-        try (HttpClientResponse res = webClient.get("/observe/health").request()) {
-            assertThat(res.status(), is(Status.OK_200));
-            String value = res.as(String.class);
-            assertThat(value, containsString("UP"));
-            assertThat(value, not(containsString("DOWN")));
-        }
-    }
+      @Override
+      public void onError(Throwable t) {
+        future.completeExceptionally(t);
+      }
 
-    static StringMessage newStringMessage(String data) {
-        return StringMessage.newBuilder().setText(data).build();
-    }
-
-    static <ReqT> StreamObserver<ReqT> singleStreamObserver(CompletableFuture<ReqT> future) {
-        return new StreamObserver<>() {
-            private ReqT value;
-
-            @Override
-            public void onNext(ReqT value) {
-                this.value = value;
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                future.completeExceptionally(t);
-            }
-
-            @Override
-            public void onCompleted() {
-                future.complete(value);
-            }
-        };
-    }
-
-    static <ResT> StreamObserver<ResT> multiStreamObserver(CompletableFuture<Iterator<ResT>> future) {
-        return new StreamObserver<>() {
-            private final List<ResT> value = new ArrayList<>();
-
-            @Override
-            public void onNext(ResT value) {
-                this.value.add(value);
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                future.completeExceptionally(t);
-            }
-
-            @Override
-            public void onCompleted() {
-                future.complete(value.iterator());
-            }
-        };
-    }
+      @Override
+      public void onCompleted() {
+        future.complete(value.iterator());
+      }
+    };
+  }
 }

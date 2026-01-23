@@ -16,7 +16,7 @@
 
 syntax = "proto3";
 
-option java_package = "io.helidon.examples.webserver.grpc";
+option java_package = "pub.ess.eding.mdm.h2";
 
 service StringService {
   rpc Upper(StringMessage) returns (StringMessage) {}
