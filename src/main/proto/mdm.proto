@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package esb.proto.mdm;
+
+import "google/protobuf/struct.proto";
+
+option java_package = "pub.ess.eding.mdm.h2";
+
+message R {
+  string sql = 1;
+}
+
+message Gw {
+  google.protobuf.Struct data = 1;
+}
+
+message Qw {
+  repeated Gw data = 1;
+}
+
+message Dw {
+  int64 data = 1;
+}
+message D {
+  string data = 1;
+}
+
+service MdmService {
+  rpc dml(R) returns (Dw) {}
+  rpc get(R) returns (Gw) {}
+  rpc que(R) returns (stream Qw) {}
+}
