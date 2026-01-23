@@ -14,20 +14,7 @@
  * limitations under the License.
  */
 
-syntax = "proto3";
-
-import "google/protobuf/any.proto";
-
-option java_package = "io.helidon.examples.webserver.grpc";
-
-service StringService {
-  rpc Upper(StringMessage) returns (StringMessage) {}
-  rpc Lower(StringMessage) returns (StringMessage) {}
-  rpc Split(StringMessage) returns (stream StringMessage) {}
-  rpc Join(stream StringMessage) returns (StringMessage) {}
-  rpc Echo(stream StringMessage) returns (stream StringMessage) {}
-}
-
-message StringMessage {
-  google.protobuf.Any text = 1;
-}
+/**
+ * Example of gRPC in webserver.
+ */
+package io.helidon.examples.webserver.grpc;
