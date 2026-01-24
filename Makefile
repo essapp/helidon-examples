@@ -11,7 +11,6 @@ build:
 # 	mvn package -Pjlink-image -DskipTests
 
 run: build
-	java -jar ./target/ess-eding-mdm-h2.jar
-# 	./target/ess-eding-mdm-h2-jri/bin/start
+	java -jar ./target/helidon-examples-webserver-grpc.jar
 
 .PHONY: build run
