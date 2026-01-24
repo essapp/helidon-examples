@@ -16,6 +16,7 @@
 
 
 syntax = "proto3";
+import "google/protobuf/any.proto";
 option java_package = "io.helidon.examples.webserver.grpc";
 
 service StringService {
@@ -28,4 +29,8 @@ service StringService {
 
 message StringMessage {
   string text = 1;
+}
+
+message Str {
+  google.protobuf.Any str = 1;
 }
