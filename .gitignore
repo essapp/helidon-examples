@@ -82,3 +82,6 @@ RUNTIMEDB/
 # Oracle Code Assist
 .oca/
 
+#vscode
+.vscode/
+*.code-workspace
